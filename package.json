@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "description": "Use Gemini from Claude Code to review code or delegate tasks.",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "engines": {
     "node": ">=18.18.0"
   },
