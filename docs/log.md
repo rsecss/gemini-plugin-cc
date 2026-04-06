@@ -2,6 +2,26 @@
 
 > 每次提交推送到远程前，必须同步更新本文件。
 
+## 2026-04-06 — 移除 `-p` 标志，改用 stdin 触发 headless 模式
+
+**Commit**: `395895a` — `fix(gemini): remove -p flag, pass prompt via stdin only`
+
+**问题**: Gemini CLI 的 `-p` 标志在官方文档中未明确定义，且在某些版本中可能不存在或行为不一致。
+
+**修复**:
+1. 从 `probeGeminiAuth()` 和 `runGeminiHeadless()` 中移除所有 `-p` 参数
+2. 依赖非 TTY 的 stdin 自动触发 headless 模式（Gemini CLI 原生支持）
+3. 在 `runGeminiHeadless()` 中添加注释，说明通过 stdin 传递 prompt 可避免 Windows 命令行长度限制
+4. 新增 `fake-gemini` 集成测试工具，模拟 Gemini CLI 行为
+5. 为 `probeGeminiAuth()` 和 `runGeminiHeadless()` 添加集成测试，验证 stdin-only 调用方式
+6. 测试中断言 fake gemini 拒绝 `-p` 标志，防止回归
+
+**变更文件**:
+- `plugins/gemini/scripts/lib/gemini.mjs` — 移除 3 处 `-p` 参数，添加 stdin 说明注释
+- `tests/gemini.test.mjs` — 新增 `withFakeGemini` 测试工具和 2 个集成测试
+
+---
+
 ## 2026-04-05 — v1.0.0 对抗式审查修复
 
 基于 `docs/gemini-plugin-adversarial-review-report.md` 的 8 项发现，进行了针对性修复。

@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Remove `-p` flag from Gemini CLI calls, rely on non-TTY stdin for headless mode
+- Add integration tests for `probeGeminiAuth` and `runGeminiHeadless` with fake Gemini binary
+
 ## 1.0.0 (2026-04-05)
 
 Initial release with adversarial review fixes applied.
