@@ -127,6 +127,10 @@ This project is shared with the [LINUX DO](https://linux.do/) community.
 
 Built on the architecture of [openai/codex-plugin-cc](https://github.com/openai/codex-plugin-cc). Key adaptations: direct Gemini CLI invocation via file-lock concurrency, three-layer JSON extraction for free-form output, and comprehensive Windows compatibility fixes.
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, code style, and pull request guidelines.
+
 ## License
 
 [Apache License 2.0](LICENSE)
