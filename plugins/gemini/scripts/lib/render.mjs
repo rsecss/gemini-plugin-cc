@@ -142,6 +142,31 @@ export function renderSetupReport(report) {
   return `${lines.join("\n").trimEnd()}\n`;
 }
 
+/**
+ * Render a normalized Gemini execution failure.
+ * @param {{ status: string, model?: string | null, message: string, detail?: string, suggestions?: string[] }} failure
+ * @returns {string}
+ */
+export function renderGeminiFailure(failure) {
+  const lines = ["# Gemini Error", ""];
+  if (failure?.model) lines.push(`Model: ${failure.model}`);
+  if (failure?.status) lines.push(`Status: ${failure.status}`);
+  if (failure?.model || failure?.status) lines.push("");
+  lines.push(String(failure?.message ?? "Gemini command failed."));
+
+  if (Array.isArray(failure?.suggestions) && failure.suggestions.length > 0) {
+    lines.push("", "Try instead:");
+    for (const suggestion of failure.suggestions) lines.push(`- --model ${suggestion}`);
+  }
+
+  const detail = String(failure?.detail ?? "").trim();
+  if (detail && detail !== failure?.message) {
+    lines.push("", "Raw error:", "", "```text", detail, "```");
+  }
+
+  return `${lines.join("\n").trimEnd()}\n`;
+}
+
 // ── Review Result ──────────────────────────────────────────────────────
 
 /**

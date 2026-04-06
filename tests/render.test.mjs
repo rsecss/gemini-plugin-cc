@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { renderReviewResult } from "../plugins/gemini/scripts/lib/render.mjs";
+import { renderGeminiFailure, renderReviewResult } from "../plugins/gemini/scripts/lib/render.mjs";
 
 describe("renderReviewResult", () => {
   it("warns clearly when the review output is not structured JSON", () => {
@@ -41,5 +41,24 @@ describe("renderReviewResult", () => {
     );
 
     assert.match(rendered, /No material findings\./);
+  });
+});
+
+describe("renderGeminiFailure", () => {
+  it("renders a normalized Gemini CLI failure with suggestions and raw detail", () => {
+    const rendered = renderGeminiFailure({
+      status: "unavailable",
+      model: "flash-lite",
+      message: "Gemini model `flash-lite` is unavailable for the current credentials.",
+      detail: "403 Forbidden: This token has no access to model gemini-3.1-flash-lite-preview",
+      suggestions: ["auto", "pro", "flash"],
+    });
+
+    assert.match(rendered, /# Gemini Error/);
+    assert.match(rendered, /Model: flash-lite/);
+    assert.match(rendered, /Status: unavailable/);
+    assert.match(rendered, /Try instead:/);
+    assert.match(rendered, /--model flash/);
+    assert.match(rendered, /Raw error:/);
   });
 });
