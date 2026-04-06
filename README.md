@@ -243,12 +243,13 @@ Then check in with:
 This plugin follows a **thin-forwarder** pattern:
 
 ```
-Slash command (MD) → gemini-companion.mjs → lib/gemini.mjs → gemini -o stream-json (prompt via stdin)
+Slash command (MD) → gemini-companion.mjs → lib/models.mjs + lib/gemini.mjs → gemini -o stream-json (prompt via stdin)
 ```
 
 Key design decisions:
 
 - **No Broker** — Unlike the Codex plugin, Gemini CLI is stateless. Concurrent requests are serialized via a file lock (`gemini.lock`) instead of a broker process.
+- **Dedicated model layer** — Model aliases, default resolution, and model-specific error normalization live in `lib/models.mjs` instead of being scattered through the CLI entrypoint.
 - **Three-layer JSON extraction** — Gemini responses are free-form text, so the plugin uses prompt engineering → JSON block extraction → plain-text fallback to reliably parse structured output.
 - **Activity-based timeout** — The stream-json event stream resets the timeout on each output event, with a configurable hard ceiling (default 30 minutes).
 - **Full Windows compatibility** — Shell spawning with `shell: true`, UNC path handling, `taskkill` for process cleanup, and EAGAIN-safe stdin reads.
@@ -265,7 +266,7 @@ No. The plugin delegates through your locally installed [Gemini CLI](https://git
 
 ### Can I choose a different model?
 
-Yes. Pass `-m <model>` to any command. Supported models include `pro`, `flash`, and `flash-lite`. If omitted, Gemini CLI uses its default.
+Yes. Pass `-m <model>` to any command. The plugin normalizes the built-in aliases `auto`, `pro`, `flash`, and `flash-lite`, while still allowing explicit Gemini model IDs. If omitted, the plugin uses the configured default model (`auto` by default). When Gemini rejects a model because of access or rate limits, the plugin now suggests alternative aliases instead of surfacing only the raw CLI stderr.
 
 ## Acknowledgments
 

@@ -10,6 +10,19 @@
 - Stop treating unstructured review output as an empty finding set with `No material findings.`
 - Render unstructured review results as contract failures so they are not mistaken for approval
 - Add regression tests for structured review parsing and unstructured review rendering
+- Extract assistant text from Gemini 0.36.0 `stream-json` `message.content` events when the final `result` event has no `response`
+- Add compatibility fallback for older `stream-json` message events that omit role metadata
+- Short-circuit `/gemini:review --base <ref>` and clean working-tree reviews when there is no reviewable diff, instead of invoking Gemini on an empty target
+- Extract model alias/default resolution into `lib/models.mjs` instead of keeping that logic inside `gemini-companion.mjs`
+- Normalize Gemini 403/429 model failures into concise user-facing errors with suggested alternative aliases
+- Reuse resolved review targets across command setup and execution instead of resolving them twice
+- Add regression tests for model normalization, alternative suggestions, and Gemini failure rendering
+- Normalize the Gemini `--sandbox` flag for CLI 0.36.0 so task runs use a boolean flag instead of the broken legacy `-s sandbox` syntax
+- Add a regression test for legacy `"sandbox"` config values and verify real Gemini task execution through the plugin entrypoint
+- Keep no-change review payloads schema-compatible with normal review results by preserving full `target` and `context`
+- Restrict model-name extraction to model-scoped error patterns so unrelated quoted text is not misreported as a failing model
+- Reset the configured inactivity timeout on each Gemini stream event instead of shrinking the window to 5 minutes after the first event
+- Add regression coverage for activity-timeout renewal and quoted-text rate-limit errors
 
 ## 1.0.0 (2026-04-05)
 
