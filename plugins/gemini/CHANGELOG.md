@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.2.0](https://github.com/rsecss/gemini-plugin-cc/compare/gemini-plugin-cc-v1.1.0...gemini-plugin-cc-v1.2.0) (2026-04-06)
+
+
+### Features
+
+* gemini-plugin-cc v1.0.0 initial release ([f6014b9](https://github.com/rsecss/gemini-plugin-cc/commit/f6014b9858f9924ade912c080d08cd9fb78e872c))
+
+
+### Bug Fixes
+
+* **gemini:** handle stream-json assistant content and empty review targets ([a8eddd9](https://github.com/rsecss/gemini-plugin-cc/commit/a8eddd9c25920c6b17fc719f6e955e7eddb9ecfd))
+* **gemini:** remove -p flag, pass prompt via stdin only ([395895a](https://github.com/rsecss/gemini-plugin-cc/commit/395895ae625283d2498a033f66dd75ec8238a552))
+* **review:** enforce structured output contract for normal review ([9413fd5](https://github.com/rsecss/gemini-plugin-cc/commit/9413fd5602404e7b064170d7f31146152c1f6b1b))
+
 ## [Unreleased]
 
 ### :wrench: CI/CD
