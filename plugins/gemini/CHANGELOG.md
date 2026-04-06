@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## 1.1.0 (2026-04-06)
+
 ### Fixed
 
 - Remove `-p` flag from Gemini CLI calls, rely on non-TTY stdin for headless mode

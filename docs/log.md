@@ -2,9 +2,41 @@
 
 > 每次提交推送到远程前，必须同步更新本文件。
 
+## 2026-04-06 — v1.1.0 发版：功能验证与版本号更新
+
+**Commit**: `chore(release): bump version to 1.1.0`
+
+**变更**:
+1. 完成全面功能验证：
+   - 所有 7 个斜杠命令测试通过
+   - 77 个单元测试全部通过
+   - 生命周期钩子正常工作
+   - 停止审查门控正确检测运行中任务
+2. 版本号更新：
+   - `package.json`: 1.0.0 → 1.1.0
+   - `plugins/gemini/.claude-plugin/plugin.json`: 1.0.0 → 1.1.0
+   - `plugins/gemini/CHANGELOG.md`: 将 Unreleased 修复项归入 1.1.0 (2026-04-06)
+
+**验证结果**:
+- `/gemini:setup`: 环境检测、门控开关 ✓
+- `/gemini:review`: 工作区/分支审查、空变更短路 ✓
+- `/gemini:task`: PING/PONG 测试通过 ✓
+- `/gemini:status`: 实时状态、历史记录、JSON 输出 ✓
+- `/gemini:result`: 任务结果获取 ✓
+- `/gemini:cancel`: 任务取消 ✓
+- 生命周期钩子: SessionStart/End/Stop ✓
+
+**变更文件**:
+- `package.json` — 版本号 1.0.0 → 1.1.0
+- `plugins/gemini/.claude-plugin/plugin.json` — 版本号 1.0.0 → 1.1.0
+- `plugins/gemini/CHANGELOG.md` — 新增 1.1.0 版本记录
+- `docs/log.md` — 记录发版信息
+
+---
+
 ## 2026-04-06 — 真实 Gemini review 联调后的超时与审查发现修复
 
-**Commit**: `unreleased` — `fix(review): preserve payload schema and timeout window during real gemini validation`
+**Commit**: `7388ccf` — `docs: update for model layer and real gemini validation fixes`
 
 **问题**:
 1. 首次真实 `working-tree` review 在修复 `--sandbox` 后仍然失败：
