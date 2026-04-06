@@ -1,4 +1,5 @@
 {
+  "last-release-sha": "4256dbeeffd439709d2b45e1dd380c46daa9b6f8",
   "packages": {
     ".": {
       "release-type": "node",
