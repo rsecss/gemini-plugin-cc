@@ -2,6 +2,58 @@
 
 > 每次提交推送到远程前，必须同步更新本文件。
 
+## 2026-04-06 — 修复 `/gemini:review` 结构化输出契约与误导性 fallback
+
+**Commit**: `unreleased` — `fix(review): enforce structured output contract for normal review`
+
+**问题**:
+1. 普通 `/gemini:review` 只使用内联字符串 prompt：`Review the following code changes and provide structured feedback.`，没有像 `adversarial-review.md` 那样明确要求返回 JSON code block。
+2. 当 Gemini 返回自然语言时，`runGeminiReview()` 会伪造一个 fallback 结果：
+   - `verdict: "needs-attention"`
+   - `summary: <自然语言输出>`
+   - `findings: []`
+3. 渲染层看到 `findings: []` 后会输出 `No material findings.`，导致最终结果同时出现：
+   - “Review completed but output was not structured JSON.”
+   - “No material findings.”
+
+这会把“审查输出无效”错误包装成“似乎没有发现问题”，对用户具有明显误导性。
+
+**修复**:
+1. 为普通 review 新增专用 prompt 模板 `plugins/gemini/prompts/review.md`
+2. 在模板中补齐结构化输出契约，要求 Gemini：
+   - 仅返回满足 schema 的 JSON
+   - 使用 ```json code block
+   - 仅报告可辩护的 material findings
+3. `executeReviewRun()` 不再使用普通字符串 prompt，改为统一走 `buildReviewPrompt(context)`
+4. `runGeminiReview()` 在 JSON 提取失败时不再伪造空 findings，而是返回：
+   - `parsed: null`
+   - `fallback: true`
+   - `parseError: ...`
+   - `rawOutput: ...`
+5. `renderReviewResult()` 在 `parsed: null` 时明确输出：
+   - 本次 review 未满足结构化输出契约
+   - 不应将该结果视为 approval
+   - 不应将该结果视为“没有 findings”
+6. README 的架构说明同步更新为 `gemini -o stream-json (prompt via stdin)`，避免继续引用旧的 `-p` 路径
+
+**变更文件**:
+- `plugins/gemini/prompts/review.md` — 新增普通 review 的结构化 prompt 模板
+- `plugins/gemini/scripts/gemini-companion.mjs` — 新增 `buildReviewPrompt()` 并在 `/gemini:review` 中启用
+- `plugins/gemini/scripts/lib/gemini.mjs` — 非结构化 review 输出改为 hard failure，不再伪造空 findings
+- `plugins/gemini/scripts/lib/render.mjs` — 非结构化 review 输出改为明确告警文案
+- `tests/gemini.test.mjs` — 新增 structured/plain-text review 两条回归测试
+- `tests/render.test.mjs` — 新增渲染层回归测试，防止再次出现 `No material findings.` 误报
+- `README.md` — 更新 headless 架构说明
+- `plugins/gemini/CHANGELOG.md` — 记录未发布修复摘要
+
+**验证**:
+1. `npm test` 通过，当前共 63 个测试全部通过
+2. 新增测试覆盖两条关键回归路径：
+   - Gemini 正确返回结构化 review JSON
+   - Gemini 返回纯文本 review 时，插件不会再伪造 “No material findings.”
+
+---
+
 ## 2026-04-06 — 移除 `-p` 标志，改用 stdin 触发 headless 模式
 
 **Commit**: `395895a` — `fix(gemini): remove -p flag, pass prompt via stdin only`

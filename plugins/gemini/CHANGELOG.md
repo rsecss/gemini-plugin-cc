@@ -6,6 +6,10 @@
 
 - Remove `-p` flag from Gemini CLI calls, rely on non-TTY stdin for headless mode
 - Add integration tests for `probeGeminiAuth` and `runGeminiHeadless` with fake Gemini binary
+- Make `/gemini:review` use a dedicated structured-output prompt instead of a plain-text inline prompt
+- Stop treating unstructured review output as an empty finding set with `No material findings.`
+- Render unstructured review results as contract failures so they are not mistaken for approval
+- Add regression tests for structured review parsing and unstructured review rendering
 
 ## 1.0.0 (2026-04-05)
 

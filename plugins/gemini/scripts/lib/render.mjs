@@ -155,8 +155,11 @@ export function renderReviewResult(parsedResult, meta) {
     const lines = [
       `# Gemini ${meta.reviewLabel}`,
       "",
-      "Gemini did not return valid structured JSON.",
+      `Target: ${meta.targetLabel}`,
+      "Gemini did not return valid structured JSON for this review.",
       "",
+      "- This review did not satisfy the plugin's structured output contract.",
+      "- Do not treat this result as approval or as evidence that there are no findings.",
       `- Parse error: ${parsedResult.parseError}`,
     ];
     if (parsedResult.rawOutput) {

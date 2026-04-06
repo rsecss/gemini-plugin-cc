@@ -229,6 +229,14 @@ function buildAdversarialReviewPrompt(context, focusText) {
   });
 }
 
+function buildReviewPrompt(context) {
+  const template = loadPromptTemplate(ROOT_DIR, "review");
+  return interpolateTemplate(template, {
+    TARGET_LABEL: context.target.label,
+    REVIEW_INPUT: context.content,
+  });
+}
+
 function ensureGeminiReady(cwd) {
   const avail = getGeminiAvailability(cwd);
   if (!avail.available) {
@@ -251,7 +259,7 @@ async function executeReviewRun(request) {
 
   const prompt = reviewName === "Adversarial Review"
     ? buildAdversarialReviewPrompt(context, focusText)
-    : `Review the following code changes and provide structured feedback.\n\nTarget: ${context.target.label}\n\n${context.content}`;
+    : buildReviewPrompt(context);
 
   // Acquire lock for serialized access (with job ownership tracking)
   const lockPath = acquireGeminiLock(stateDir, request.jobId ?? null);

@@ -475,17 +475,14 @@ export async function runGeminiReview(reviewContext, opts = {}) {
 
   const extracted = extractStructuredJson(result.response, opts.schema);
 
-  // If JSON extraction failed, build a fallback review structure
+  // Structured review output is a hard contract. Keep the raw response, but do
+  // not fabricate an empty finding set from unstructured text.
   if (extracted.fallback || !extracted.parsed) {
+    const parseError = [extracted.parseError, result.error].filter(Boolean).join("; ");
     return {
       status: result.status,
-      parsed: {
-        verdict: "needs-attention",
-        summary: result.response.slice(0, 2000) || "Review completed but output was not structured JSON.",
-        findings: [],
-        next_steps: [],
-      },
-      parseError: extracted.parseError,
+      parsed: null,
+      parseError: parseError || "Review completed but output was not structured JSON.",
       rawOutput: result.response,
       fallback: true,
       error: result.error,

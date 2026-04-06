@@ -11,6 +11,7 @@ import {
   parseStructuredOutput,
   probeGeminiAuth,
   runGeminiHeadless,
+  runGeminiReview,
 } from "../plugins/gemini/scripts/lib/gemini.mjs";
 
 const FAKE_GEMINI_SCRIPT = [
@@ -35,6 +36,14 @@ const FAKE_GEMINI_SCRIPT = [
   "  process.exit(0);",
   "}",
   'if (outputMode === "stream-json") {',
+  '  if (input.includes("RETURN_STRUCTURED_REVIEW")) {',
+  '    process.stdout.write(`${JSON.stringify({ type: "result", response: "```json\\n{\\"verdict\\":\\"approve\\",\\"summary\\":\\"all good\\",\\"findings\\":[],\\"next_steps\\":[]}\\n```" })}\\n`);',
+  "    process.exit(0);",
+  "  }",
+  '  if (input.includes("RETURN_PLAIN_REVIEW")) {',
+  '    process.stdout.write(`${JSON.stringify({ type: "result", response: "plain text review output" })}\\n`);',
+  "    process.exit(0);",
+  "  }",
   '  process.stdout.write(`${JSON.stringify({ type: "message", text: input })}\\n`);',
   '  process.stdout.write(`${JSON.stringify({ type: "result", response: "ACK:" + input })}\\n`);',
   "  process.exit(0);",
@@ -208,6 +217,36 @@ describe("runGeminiHeadless", () => {
       assert.equal(result.status, 0);
       assert.equal(result.error, null);
       assert.equal(result.response, `ACK:${prompt}`);
+    });
+  });
+});
+
+describe("runGeminiReview", () => {
+  it("parses structured review JSON when Gemini follows the contract", async () => {
+    await withFakeGemini(async () => {
+      const result = await runGeminiReview(
+        { content: "RETURN_STRUCTURED_REVIEW", summary: "", target: {} },
+        { cwd: process.cwd() }
+      );
+
+      assert.equal(result.fallback, false);
+      assert.ok(result.parsed);
+      assert.equal(result.parsed.verdict, "approve");
+      assert.equal(result.parseError, null);
+    });
+  });
+
+  it("does not fabricate an empty finding set from plain-text review output", async () => {
+    await withFakeGemini(async () => {
+      const result = await runGeminiReview(
+        { content: "RETURN_PLAIN_REVIEW", summary: "", target: {} },
+        { cwd: process.cwd() }
+      );
+
+      assert.equal(result.fallback, true);
+      assert.equal(result.parsed, null);
+      assert.match(result.parseError, /No valid JSON found/i);
+      assert.equal(result.rawOutput, "plain text review output");
     });
   });
 });

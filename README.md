@@ -243,7 +243,7 @@ Then check in with:
 This plugin follows a **thin-forwarder** pattern:
 
 ```
-Slash command (MD) → gemini-companion.mjs → lib/gemini.mjs → gemini -p -o stream-json
+Slash command (MD) → gemini-companion.mjs → lib/gemini.mjs → gemini -o stream-json (prompt via stdin)
 ```
 
 Key design decisions:
