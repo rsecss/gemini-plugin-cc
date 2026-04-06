@@ -4,10 +4,7 @@
 
 将 Google Gemini 融入你的 Claude Code 工作流 — 代码审查、对抗性审查、任务委派，全部通过斜杠命令完成。
 
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18.18.0-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
-[![Claude Code](https://img.shields.io/badge/Claude%20Code-Plugin-7C3AED?logo=anthropic&logoColor=white)](https://docs.anthropic.com/en/docs/claude-code)
-[![Gemini CLI](https://img.shields.io/badge/Gemini%20CLI-Integration-4285F4?logo=google&logoColor=white)](https://github.com/google-gemini/gemini-cli)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE) [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18.18.0-339933?logo=node.js&logoColor=white)](https://nodejs.org/) [![Claude Code](https://img.shields.io/badge/Claude%20Code-Plugin-7C3AED?logo=anthropic&logoColor=white)](https://docs.anthropic.com/en/docs/claude-code) [![Gemini CLI](https://img.shields.io/badge/Gemini%20CLI-Integration-4285F4?logo=google&logoColor=white)](https://github.com/google-gemini/gemini-cli)
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
