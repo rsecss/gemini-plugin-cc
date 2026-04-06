@@ -1,0 +1,25 @@
+{
+  "packages": {
+    ".": {
+      "release-type": "node",
+      "changelog-path": "plugins/gemini/CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "plugins/gemini/.claude-plugin/plugin.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": ".claude-plugin/marketplace.json",
+          "jsonpath": "$.metadata.version"
+        },
+        {
+          "type": "json",
+          "path": ".claude-plugin/marketplace.json",
+          "jsonpath": "$.plugins[0].version"
+        }
+      ]
+    }
+  }
+}

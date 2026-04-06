@@ -29,7 +29,7 @@ This plugin is for Claude Code users who want an easy way to use Google Gemini f
 Add the marketplace in Claude Code:
 
 ```shell
-/plugin marketplace add <owner>/<repo>
+/plugin marketplace add rsecss/gemini-plugin-cc
 ```
 
 Install the plugin:

@@ -1,3 +1,4 @@
 .ace-tool/
 docs/*
-!docs/log.md
+docs/log.md
+
