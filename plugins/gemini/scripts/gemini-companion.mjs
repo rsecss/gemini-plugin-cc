@@ -17,21 +17,18 @@ import { parseArgs, splitRawArgumentString } from "./lib/args.mjs";
 import { readStdinIfPiped } from "./lib/fs.mjs";
 import {
   acquireGeminiLock,
-  buildGeminiEnv,
-  extractStructuredJson,
   getGeminiAvailability,
   getGeminiEndpointConfig,
   interruptGeminiTask,
   probeGeminiAuth,
-  parseStructuredOutput,
   readOutputSchema,
   releaseGeminiLock,
   releaseGeminiLockIfOwner,
-  runGeminiHeadless,
   runGeminiReview,
   runGeminiTask,
 } from "./lib/gemini.mjs";
 import { collectReviewContext, ensureGitRepository, resolveReviewTarget } from "./lib/git.mjs";
+import { normalizeGeminiCliError, resolveConfiguredModel, resolveRequestedModel } from "./lib/models.mjs";
 import { binaryAvailable, terminateProcessTree } from "./lib/process.mjs";
 import { loadPromptTemplate, interpolateTemplate } from "./lib/prompts.mjs";
 import {
@@ -61,6 +58,7 @@ import {
 import { resolveWorkspaceRoot } from "./lib/workspace.mjs";
 import {
   renderCancelReport,
+  renderGeminiFailure,
   renderJobStatusReport,
   renderReviewResult,
   renderSetupReport,
@@ -73,12 +71,6 @@ const ROOT_DIR = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const REVIEW_SCHEMA = path.join(ROOT_DIR, "schemas", "review-output.schema.json");
 const DEFAULT_STATUS_WAIT_TIMEOUT_MS = 240_000;
 const DEFAULT_STATUS_POLL_INTERVAL_MS = 2_000;
-const MODEL_ALIASES = new Map([
-  ["pro", "pro"],
-  ["flash", "flash"],
-  ["flash-lite", "flash-lite"],
-  ["auto", "auto"],
-]);
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -107,13 +99,6 @@ function outputResult(value, asJson) {
 
 function outputCommandResult(payload, rendered, asJson) {
   outputResult(asJson ? payload : rendered, asJson);
-}
-
-function normalizeRequestedModel(model) {
-  if (model == null) return null;
-  const normalized = String(model).trim();
-  if (!normalized) return null;
-  return MODEL_ALIASES.get(normalized.toLowerCase()) ?? normalized;
 }
 
 function normalizeArgv(argv) {
@@ -237,6 +222,40 @@ function buildReviewPrompt(context) {
   });
 }
 
+function buildNoChangesReviewResult(reviewName, context, summary) {
+  const parsed = {
+    verdict: "approve",
+    summary,
+    findings: [],
+    next_steps: [],
+  };
+  const targetLabel = context.target.label;
+
+  return {
+    exitStatus: 0,
+    payload: {
+      review: reviewName,
+      target: context.target,
+      context: {
+        repoRoot: context.repoRoot,
+        branch: context.branch,
+        summary: context.summary,
+      },
+      result: parsed,
+      rawOutput: "",
+      parseError: null,
+    },
+    rendered: renderReviewResult(
+      { parsed, parseError: null, rawOutput: "" },
+      { reviewLabel: reviewName, targetLabel }
+    ),
+    summary,
+    jobTitle: `Gemini ${reviewName}`,
+    jobClass: "review",
+    targetLabel,
+  };
+}
+
 function ensureGeminiReady(cwd) {
   const avail = getGeminiAvailability(cwd);
   if (!avail.available) {
@@ -246,16 +265,43 @@ function ensureGeminiReady(cwd) {
   }
 }
 
+function selectExecutionModel(requestedModel, configuredModel) {
+  return requestedModel ?? resolveConfiguredModel(configuredModel);
+}
+
+function buildReviewRequest(cwd, options, reviewName, focusText, extra = {}) {
+  const target = resolveReviewTarget(cwd, { base: options.base, scope: options.scope });
+  return {
+    target,
+    request: {
+      cwd,
+      target,
+      model: resolveRequestedModel(options.model),
+      focusText,
+      reviewName,
+      ...extra,
+    },
+  };
+}
+
 async function executeReviewRun(request) {
   ensureGeminiReady(request.cwd);
   ensureGitRepository(request.cwd);
 
-  const target = resolveReviewTarget(request.cwd, { base: request.base, scope: request.scope });
+  const target = request.target ?? resolveReviewTarget(request.cwd, { base: request.base, scope: request.scope });
   const focusText = request.focusText?.trim() ?? "";
   const reviewName = request.reviewName ?? "Review";
   const context = collectReviewContext(request.cwd, target);
   const stateDir = resolveStateDir(request.cwd);
   const config = getConfig(resolveWorkspaceRoot(request.cwd));
+  const selectedModel = selectExecutionModel(request.model, config.defaultModel);
+
+  if (!context.hasChanges) {
+    const summary = target.mode === "branch"
+      ? `No commits or file changes found between the current branch and ${target.baseRef}.`
+      : "No staged, unstaged, or untracked changes found in the working tree.";
+    return buildNoChangesReviewResult(reviewName, context, summary);
+  }
 
   const prompt = reviewName === "Adversarial Review"
     ? buildAdversarialReviewPrompt(context, focusText)
@@ -268,7 +314,7 @@ async function executeReviewRun(request) {
       { content: context.content, summary: context.summary, target },
       {
         promptTemplate: prompt,
-        model: request.model ?? config.defaultModel,
+        model: selectedModel,
         cwd: context.repoRoot,
         timeoutMs: config.defaultTimeoutMs,
         apiBase: config.apiBase,
@@ -276,6 +322,30 @@ async function executeReviewRun(request) {
         onEvent: (ev) => request.onProgress?.(`Gemini: ${ev.type ?? "event"}`),
       }
     );
+    const executionError = normalizeGeminiCliError(result.error, {
+      model: request.model,
+      configuredModel: config.defaultModel,
+    });
+
+    if (executionError && !result.rawOutput) {
+      return {
+        exitStatus: result.status,
+        payload: {
+          review: reviewName,
+          target,
+          context: { repoRoot: context.repoRoot, branch: context.branch, summary: context.summary },
+          result: null,
+          rawOutput: "",
+          parseError: result.parseError,
+          error: executionError,
+        },
+        rendered: renderGeminiFailure(executionError),
+        summary: executionError.message,
+        jobTitle: `Gemini ${reviewName}`,
+        jobClass: "review",
+        targetLabel: context.target.label,
+      };
+    }
 
     const payload = {
       review: reviewName,
@@ -284,6 +354,7 @@ async function executeReviewRun(request) {
       result: result.parsed,
       rawOutput: result.rawOutput,
       parseError: result.parseError,
+      error: executionError,
     };
 
     return {
@@ -310,6 +381,8 @@ async function executeTaskRun(request) {
   ensureGeminiReady(request.cwd);
   const config = getConfig(workspaceRoot);
   const stateDir = resolveStateDir(request.cwd);
+  const selectedModel = selectExecutionModel(request.model, config.defaultModel);
+  const sandboxMode = request.write ? false : (config.defaultSandbox ?? true);
 
   if (!request.prompt) {
     throw new Error("Provide a prompt, a prompt file, or piped stdin.");
@@ -318,8 +391,8 @@ async function executeTaskRun(request) {
   const lockPath = acquireGeminiLock(stateDir, request.jobId ?? null);
   try {
     const result = await runGeminiTask(request.prompt, {
-      model: request.model ?? config.defaultModel,
-      sandbox: request.write ? undefined : "sandbox",
+      model: selectedModel,
+      sandbox: sandboxMode,
       cwd: workspaceRoot,
       timeoutMs: config.defaultTimeoutMs,
       apiBase: config.apiBase,
@@ -327,14 +400,24 @@ async function executeTaskRun(request) {
     });
 
     const rawOutput = typeof result.response === "string" ? result.response : "";
-    const rendered = renderTaskResult({ rawOutput, failureMessage: result.error });
-    const payload = { status: result.status, rawOutput };
+    const executionError = normalizeGeminiCliError(result.error, {
+      model: request.model,
+      configuredModel: config.defaultModel,
+    });
+    const failureMessage = executionError ? renderGeminiFailure(executionError).trimEnd() : result.error;
+    const rendered = renderTaskResult({ rawOutput, failureMessage });
+    const payload = {
+      status: result.status,
+      rawOutput,
+      error: executionError,
+      errorDetail: result.error ?? null,
+    };
 
     return {
       exitStatus: result.status,
       payload,
       rendered,
-      summary: firstMeaningfulLine(rawOutput, firstMeaningfulLine(result.error, "Task finished.")),
+      summary: firstMeaningfulLine(rawOutput, firstMeaningfulLine(executionError?.message ?? result.error, "Task finished.")),
       jobTitle: "Gemini Task",
       jobClass: "task",
       write: Boolean(request.write),
@@ -461,7 +544,7 @@ async function handleReviewCommand(argv, config) {
   const cwd = resolveCommandCwd(options);
   const workspaceRoot = resolveCommandWorkspace(options);
   const focusText = positionals.join(" ").trim();
-  const target = resolveReviewTarget(cwd, { base: options.base, scope: options.scope });
+  const { target, request } = buildReviewRequest(cwd, options, config.reviewName, focusText);
 
   const metadata = buildReviewJobMetadata(config.reviewName, target);
   const job = createCompanionJob({
@@ -477,12 +560,7 @@ async function handleReviewCommand(argv, config) {
     job,
     (progress) =>
       executeReviewRun({
-        cwd,
-        base: options.base,
-        scope: options.scope,
-        model: normalizeRequestedModel(options.model),
-        focusText,
-        reviewName: config.reviewName,
+        ...request,
         jobId: job.id,
         onProgress: progress,
       }),
@@ -503,7 +581,7 @@ async function handleTask(argv) {
 
   const cwd = resolveCommandCwd(options);
   const workspaceRoot = resolveCommandWorkspace(options);
-  const model = normalizeRequestedModel(options.model);
+  const model = resolveRequestedModel(options.model);
   const prompt = readTaskPrompt(cwd, options, positionals);
   const write = Boolean(options.write);
   const taskMetadata = buildTaskRunMetadata({ prompt });
@@ -659,6 +737,7 @@ async function main() {
 
 main().catch((error) => {
   const message = error instanceof Error ? error.message : String(error);
-  process.stderr.write(`${message}\n`);
+  const normalized = normalizeGeminiCliError(message);
+  process.stderr.write(normalized ? renderGeminiFailure(normalized) : `${message}\n`);
   process.exitCode = 1;
 });

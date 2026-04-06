@@ -174,6 +174,7 @@ function collectWorkingTreeContext(cwd, state) {
 
   return {
     mode: "working-tree",
+    hasChanges: Boolean(status || stagedDiff || unstagedDiff || untrackedBody),
     summary: `Reviewing ${state.staged.length} staged, ${state.unstaged.length} unstaged, and ${state.untracked.length} untracked file(s).`,
     content: [
       formatSection("Git Status", status),
@@ -194,6 +195,7 @@ function collectBranchContext(cwd, baseRef) {
 
   return {
     mode: "branch",
+    hasChanges: Boolean(logOutput || diffStat || diff.trim()),
     summary: `Reviewing branch ${currentBranch} against ${baseRef} from merge-base ${mergeBase}.`,
     content: [
       formatSection("Commit Log", logOutput),

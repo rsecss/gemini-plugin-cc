@@ -6,6 +6,7 @@ import path from "node:path";
 import process from "node:process";
 
 import {
+  createActivityTimeout,
   extractStructuredJson,
   parseGeminiOutput,
   parseStructuredOutput,
@@ -29,6 +30,15 @@ const FAKE_GEMINI_SCRIPT = [
   "}",
   'const outputIndex = args.indexOf("-o");',
   'const outputMode = outputIndex === -1 ? "" : args[outputIndex + 1];',
+  'const sandboxIndex = args.indexOf("--sandbox");',
+  'if (args.includes("-s") && args[args.indexOf("-s") + 1] === "sandbox") {',
+  '  process.stderr.write("legacy sandbox flag syntax\\n");',
+  '  process.exit(43);',
+  '}',
+  'if (sandboxIndex !== -1 && args[sandboxIndex + 1] === "sandbox") {',
+  '  process.stderr.write("boolean sandbox flag received a legacy value\\n");',
+  '  process.exit(44);',
+  '}',
   'const input = fs.readFileSync(0, "utf8");',
   "",
   'if (outputMode === "json") {',
@@ -42,6 +52,20 @@ const FAKE_GEMINI_SCRIPT = [
   "  }",
   '  if (input.includes("RETURN_PLAIN_REVIEW")) {',
   '    process.stdout.write(`${JSON.stringify({ type: "result", response: "plain text review output" })}\\n`);',
+  "    process.exit(0);",
+  "  }",
+  '  if (input.includes("RETURN_ASSISTANT_CONTENT_ONLY")) {',
+  '    process.stdout.write(`${JSON.stringify({ type: "init", session_id: "test-session", model: "fake-model" })}\\n`);',
+  '    process.stdout.write(`${JSON.stringify({ type: "message", role: "user", content: input })}\\n`);',
+  '    process.stdout.write(`${JSON.stringify({ type: "message", role: "assistant", content: "ACK:", delta: true })}\\n`);',
+  '    process.stdout.write(`${JSON.stringify({ type: "message", role: "assistant", content: input, delta: true })}\\n`);',
+  '    process.stdout.write(`${JSON.stringify({ type: "result", status: "success", stats: { total_tokens: 1 } })}\\n`);',
+  "    process.exit(0);",
+  "  }",
+  '  if (input.includes("RETURN_GENERIC_CONTENT_ONLY")) {',
+  '    process.stdout.write(`${JSON.stringify({ type: "message", content: "ACK:", delta: true })}\\n`);',
+  '    process.stdout.write(`${JSON.stringify({ type: "message", content: input, delta: true })}\\n`);',
+  '    process.stdout.write(`${JSON.stringify({ type: "result", status: "success", stats: { total_tokens: 1 } })}\\n`);',
   "    process.exit(0);",
   "  }",
   '  process.stdout.write(`${JSON.stringify({ type: "message", text: input })}\\n`);',
@@ -205,6 +229,24 @@ describe("probeGeminiAuth", () => {
   });
 });
 
+describe("createActivityTimeout", () => {
+  it("resets to the configured inactivity timeout after each event", async () => {
+    let fired = false;
+    const timer = createActivityTimeout(50, () => {
+      fired = true;
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    timer.extend();
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.equal(fired, false);
+
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    assert.equal(fired, true);
+    timer.clear();
+  });
+});
+
 describe("runGeminiHeadless", () => {
   it("streams the prompt through stdin without requiring -p", async () => {
     await withFakeGemini(async () => {
@@ -212,6 +254,49 @@ describe("runGeminiHeadless", () => {
       const result = await runGeminiHeadless(prompt, {
         cwd: process.cwd(),
         timeoutMs: 5_000,
+      });
+
+      assert.equal(result.status, 0);
+      assert.equal(result.error, null);
+      assert.equal(result.response, `ACK:${prompt}`);
+    });
+  });
+
+  it("extracts assistant content when the result event has no response field", async () => {
+    await withFakeGemini(async () => {
+      const prompt = "RETURN_ASSISTANT_CONTENT_ONLY";
+      const result = await runGeminiHeadless(prompt, {
+        cwd: process.cwd(),
+        timeoutMs: 5_000,
+      });
+
+      assert.equal(result.status, 0);
+      assert.equal(result.error, null);
+      assert.equal(result.response, `ACK:${prompt}`);
+    });
+  });
+
+  it("falls back to generic delta content for legacy message events without role metadata", async () => {
+    await withFakeGemini(async () => {
+      const prompt = "RETURN_GENERIC_CONTENT_ONLY";
+      const result = await runGeminiHeadless(prompt, {
+        cwd: process.cwd(),
+        timeoutMs: 5_000,
+      });
+
+      assert.equal(result.status, 0);
+      assert.equal(result.error, null);
+      assert.equal(result.response, `ACK:${prompt}`);
+    });
+  });
+
+  it("treats sandbox as a boolean CLI flag and accepts the legacy 'sandbox' config value", async () => {
+    await withFakeGemini(async () => {
+      const prompt = "sandboxed request";
+      const result = await runGeminiHeadless(prompt, {
+        cwd: process.cwd(),
+        timeoutMs: 5_000,
+        sandbox: "sandbox",
       });
 
       assert.equal(result.status, 0);

@@ -18,7 +18,6 @@ import { binaryAvailable, runCommand, terminateProcessTree } from "./process.mjs
 
 const MIN_GEMINI_VERSION = "0.1.0";
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;   // 30 minutes
-const ACTIVITY_EXTEND_MS = 5 * 60 * 1000;    // 5 minutes per activity event
 const LOCK_TIMEOUT_MS = 60_000;               // 60 seconds lock wait
 const LOCK_POLL_MS = 500;
 const SIGTERM_GRACE_MS = 3_000;
@@ -226,12 +225,14 @@ export function releaseGeminiLockIfOwner(lockPath, jobId) {
  * @param {number} timeoutMs
  * @param {() => void} onTimeout
  */
-function createActivityTimeout(timeoutMs, onTimeout) {
+export function createActivityTimeout(timeoutMs, onTimeout) {
   let timer = setTimeout(onTimeout, timeoutMs);
   return {
     extend() {
       clearTimeout(timer);
-      timer = setTimeout(onTimeout, ACTIVITY_EXTEND_MS);
+      // Keep the configured inactivity window stable across events instead of
+      // shrinking it to a hard-coded shorter value after the first chunk.
+      timer = setTimeout(onTimeout, timeoutMs);
     },
     clear() {
       clearTimeout(timer);
@@ -249,7 +250,7 @@ function createActivityTimeout(timeoutMs, onTimeout) {
  * @param {{
  *   model?: string,
  *   outputMode?: string,
- *   sandbox?: string,
+ *   sandbox?: boolean | string,
  *   approvalMode?: string,
  *   sessionId?: string,
  *   apiBase?: string,
@@ -260,11 +261,30 @@ function createActivityTimeout(timeoutMs, onTimeout) {
  * }} opts
  * @returns {Promise<{ status: number, events: object[], response: string, error: string | null, pid: number }>}
  */
+function appendSandboxArgs(args, sandbox) {
+  if (sandbox == null || sandbox === false) return;
+  if (sandbox === true) {
+    args.push("--sandbox");
+    return;
+  }
+
+  const normalized = String(sandbox).trim().toLowerCase();
+  if (!normalized || normalized === "false" || normalized === "off" || normalized === "none") return;
+  if (normalized === "true" || normalized === "sandbox") {
+    // Gemini CLI 0.36.0 expects --sandbox as a boolean flag. Keep accepting the
+    // legacy "sandbox" string from older plugin state/config values.
+    args.push("--sandbox");
+    return;
+  }
+
+  args.push("--sandbox", normalized);
+}
+
 export function runGeminiHeadless(prompt, opts = {}) {
   const outputMode = opts.outputMode ?? "stream-json";
   const args = ["-o", outputMode];
   if (opts.model) args.push("-m", opts.model);
-  if (opts.sandbox) args.push("-s", opts.sandbox);
+  appendSandboxArgs(args, opts.sandbox);
   if (opts.approvalMode) args.push("--approval-mode", opts.approvalMode);
   if (opts.sessionId) args.push("-r", opts.sessionId);
 
@@ -387,12 +407,40 @@ function extractResponseFromEvents(events) {
     if (ev.type === "result" && ev.response) return ev.response;
   }
 
-  // Fallback: concatenate message events' text
-  const messageParts = [];
+  // Gemini 0.36.0 emits assistant text as `message.content` chunks and the
+  // final `result` event only carries status/stats. Prefer assistant content.
+  const assistantDeltaParts = [];
+  let lastAssistantSnapshot = "";
+  const genericDeltaParts = [];
+  let lastGenericSnapshot = "";
   for (const ev of events) {
-    if (ev.type === "message" && ev.text) messageParts.push(ev.text);
+    if (ev.type !== "message" || ev.role === "user") continue;
+
+    const content =
+      typeof ev.content === "string"
+        ? ev.content
+        : (typeof ev.text === "string" ? ev.text : "");
+
+    if (!content) continue;
+    if (ev.role === "assistant" && ev.delta === true) {
+      assistantDeltaParts.push(content);
+      continue;
+    }
+    if (ev.role === "assistant") {
+      lastAssistantSnapshot = content;
+      continue;
+    }
+
+    if (ev.delta === true) {
+      genericDeltaParts.push(content);
+      continue;
+    }
+    lastGenericSnapshot = content;
   }
-  return messageParts.join("");
+  if (assistantDeltaParts.length > 0) return assistantDeltaParts.join("");
+  if (lastAssistantSnapshot) return lastAssistantSnapshot;
+  if (genericDeltaParts.length > 0) return genericDeltaParts.join("");
+  return lastGenericSnapshot;
 }
 
 // ── Structured JSON Extraction (Three-Layer Strategy) ─────────────────
