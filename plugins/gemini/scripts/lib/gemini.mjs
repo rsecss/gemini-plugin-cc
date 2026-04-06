@@ -49,7 +49,7 @@ export function getGeminiAvailability(cwd) {
  *
  * Strategy:
  * 1. Quick pre-check: GEMINI_API_KEY or Google Cloud credential env vars
- * 2. Minimal headless probe (`echo "ok" | gemini -p -o json`) with short timeout
+ * 2. Minimal headless probe (`echo "ok" | gemini -o json`) with short timeout
  *
  * Does NOT rely on non-existent `gemini auth status` or `gemini auth login`.
  *
@@ -70,7 +70,7 @@ export function probeGeminiAuth(cwd) {
     return { available: true, ready: true, detail: "Google Cloud credentials detected" };
   }
 
-  const result = runCommand("gemini", ["-p", "-o", "json"], {
+  const result = runCommand("gemini", ["-o", "json"], {
     cwd,
     input: "reply with exactly: ok",
     timeout: 15_000,
@@ -262,7 +262,7 @@ function createActivityTimeout(timeoutMs, onTimeout) {
  */
 export function runGeminiHeadless(prompt, opts = {}) {
   const outputMode = opts.outputMode ?? "stream-json";
-  const args = ["-p", "-o", outputMode];
+  const args = ["-o", outputMode];
   if (opts.model) args.push("-m", opts.model);
   if (opts.sandbox) args.push("-s", opts.sandbox);
   if (opts.approvalMode) args.push("--approval-mode", opts.approvalMode);
@@ -366,7 +366,8 @@ export function runGeminiHeadless(prompt, opts = {}) {
       });
     });
 
-    // Write prompt to stdin
+    // Non-TTY stdio already triggers headless mode, so keep the full prompt on
+    // stdin instead of the command line to avoid Windows length limits.
     child.stdin.write(prompt);
     child.stdin.end();
   });

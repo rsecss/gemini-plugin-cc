@@ -1,11 +1,87 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import process from "node:process";
 
 import {
   extractStructuredJson,
   parseGeminiOutput,
   parseStructuredOutput,
+  probeGeminiAuth,
+  runGeminiHeadless,
 } from "../plugins/gemini/scripts/lib/gemini.mjs";
+
+const FAKE_GEMINI_SCRIPT = [
+  'import fs from "node:fs";',
+  'import process from "node:process";',
+  "",
+  "const args = process.argv.slice(2);",
+  'if (args.includes("--version")) {',
+  '  process.stdout.write("0.36.0\\n");',
+  "  process.exit(0);",
+  "}",
+  'if (args.includes("-p")) {',
+  '  process.stderr.write("unexpected -p\\n");',
+  "  process.exit(42);",
+  "}",
+  'const outputIndex = args.indexOf("-o");',
+  'const outputMode = outputIndex === -1 ? "" : args[outputIndex + 1];',
+  'const input = fs.readFileSync(0, "utf8");',
+  "",
+  'if (outputMode === "json") {',
+  '  process.stdout.write(JSON.stringify({ response: input.trim() || "ok" }));',
+  "  process.exit(0);",
+  "}",
+  'if (outputMode === "stream-json") {',
+  '  process.stdout.write(`${JSON.stringify({ type: "message", text: input })}\\n`);',
+  '  process.stdout.write(`${JSON.stringify({ type: "result", response: "ACK:" + input })}\\n`);',
+  "  process.exit(0);",
+  "}",
+  'process.stderr.write(`unexpected args: ${args.join(" ")}\\n`);',
+  "process.exit(1);",
+  "",
+].join("\n");
+
+async function withFakeGemini(testFn) {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gemini-test-"));
+  const scriptPath = path.join(tempDir, "fake-gemini.mjs");
+  const launcherPath = process.platform === "win32" ? path.join(tempDir, "gemini.cmd") : path.join(tempDir, "gemini");
+  const originalEnv = {
+    PATH: process.env.PATH,
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+    GOOGLE_APPLICATION_CREDENTIALS: process.env.GOOGLE_APPLICATION_CREDENTIALS,
+    GOOGLE_CLOUD_PROJECT: process.env.GOOGLE_CLOUD_PROJECT,
+  };
+
+  fs.writeFileSync(scriptPath, `${FAKE_GEMINI_SCRIPT}\n`, "utf8");
+  if (process.platform === "win32") {
+    fs.writeFileSync(launcherPath, '@echo off\nnode "%~dp0fake-gemini.mjs" %*\n', "utf8");
+  } else {
+    fs.writeFileSync(launcherPath, '#!/bin/sh\nnode "$(dirname "$0")/fake-gemini.mjs" "$@"\n', "utf8");
+    fs.chmodSync(launcherPath, 0o755);
+  }
+
+  process.env.PATH = `${tempDir}${path.delimiter}${originalEnv.PATH ?? ""}`;
+  delete process.env.GEMINI_API_KEY;
+  delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  delete process.env.GOOGLE_CLOUD_PROJECT;
+
+  try {
+    return await testFn();
+  } finally {
+    if (originalEnv.PATH == null) delete process.env.PATH;
+    else process.env.PATH = originalEnv.PATH;
+    if (originalEnv.GEMINI_API_KEY == null) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = originalEnv.GEMINI_API_KEY;
+    if (originalEnv.GOOGLE_APPLICATION_CREDENTIALS == null) delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    else process.env.GOOGLE_APPLICATION_CREDENTIALS = originalEnv.GOOGLE_APPLICATION_CREDENTIALS;
+    if (originalEnv.GOOGLE_CLOUD_PROJECT == null) delete process.env.GOOGLE_CLOUD_PROJECT;
+    else process.env.GOOGLE_CLOUD_PROJECT = originalEnv.GOOGLE_CLOUD_PROJECT;
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+}
 
 describe("extractStructuredJson", () => {
   it("extracts JSON from ```json code block", () => {
@@ -106,5 +182,32 @@ describe("parseStructuredOutput", () => {
     const result = parseStructuredOutput(null);
     assert.equal(result.parsed, null);
     assert.ok(result.parseError);
+  });
+});
+
+describe("probeGeminiAuth", () => {
+  it("accepts a successful stdin-only headless probe", async () => {
+    await withFakeGemini(async () => {
+      const result = probeGeminiAuth(process.cwd());
+      assert.equal(result.available, true);
+      assert.equal(result.ready, true);
+      assert.equal(result.detail, "authenticated");
+    });
+  });
+});
+
+describe("runGeminiHeadless", () => {
+  it("streams the prompt through stdin without requiring -p", async () => {
+    await withFakeGemini(async () => {
+      const prompt = "review this diff";
+      const result = await runGeminiHeadless(prompt, {
+        cwd: process.cwd(),
+        timeoutMs: 5_000,
+      });
+
+      assert.equal(result.status, 0);
+      assert.equal(result.error, null);
+      assert.equal(result.response, `ACK:${prompt}`);
+    });
   });
 });
